@@ -1,43 +1,35 @@
 <?php
+session_start();
+
 // ========= CONFIG =========
 $JSON_URL = "https://sports-rk.vercel.app/channels.json";
-$AD_M3U8  = "https://m3uplaylist-plum.vercel.app/output.m3u8"; // 10–15 sec ad
+$AD_M3U8  = "https://m3uplaylist-plum.vercel.app/output.m3u8"; 
 // ==========================
 
-if (!isset($_GET['id'])) {
-    http_response_code(400);
-    exit("Missing channel id");
+$id = $_GET['id'] ?? die("Missing channel id");
+
+// Session Check: Kya is user ne abhi Ad dekha?
+// Hum 20 seconds ka gap rakhenge taaki Ad baar-baar na chale
+if (!isset($_SESSION['last_ad_'.$id]) || (time() - $_SESSION['last_ad_'.$id] > 20)) {
+    
+    // Pehli baar: Ad par bhej do
+    $_SESSION['last_ad_'.$id] = time();
+    header("Location: $AD_M3U8");
+    exit;
+
+} else {
+
+    // Dusri baar (ya Ad ke turant baad): Real Stream par bhej do
+    $json = @file_get_contents($JSON_URL);
+    $data = json_decode($json, true);
+
+    if (isset($data[$id])) {
+        $streamUrl = $data[$id];
+        header("Location: $streamUrl");
+        exit;
+    } else {
+        http_response_code(404);
+        exit("Channel not found");
+    }
 }
-
-$id = $_GET['id'];
-
-// Fetch channels.json
-$json = @file_get_contents($JSON_URL);
-if ($json === false) {
-    http_response_code(500);
-    exit("channels.json not reachable");
-}
-
-$data = json_decode($json, true);
-if (!isset($data[$id])) {
-    http_response_code(404);
-    exit("Channel not found");
-}
-
-$streamUrl = $data[$id];
-
-// Output M3U8 that plays AD first, then stream
-header("Content-Type: application/vnd.apple.mpegurl");
-header("Cache-Control: no-cache");
-
-echo "#EXTM3U\n";
-echo "#EXT-X-VERSION:3\n";
-echo "#EXT-X-INDEPENDENT-SEGMENTS\n\n";
-
-/* ---- AD FIRST ---- */
-echo "#EXT-X-STREAM-INF:BANDWIDTH=800000\n";
-echo $AD_M3U8 . "\n\n";
-
-/* ---- REAL STREAM ---- */
-echo "#EXT-X-STREAM-INF:BANDWIDTH=5000000\n";
-echo $streamUrl . "\n";
+?>
